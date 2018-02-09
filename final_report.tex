@@ -1,0 +1,511 @@
+\documentclass[11pt,draftclsnofoot,onecolumn,letterpaper]{IEEEtran}
+\def\@IEEEstringphv{phv}
+\usepackage[a4paper,left=0.75in,right=0.75in,top=0.75in,bottom=0.75in]{geometry}
+\usepackage{longtable}
+ 
+
+\newcommand{\tab}{\hspace*{2em}}
+
+
+\usepackage{amsmath}
+\usepackage{hyperref} 
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{verbatim}
+\usepackage{moreverb}
+\usepackage{gensymb}
+\usepackage{color}
+
+\hypersetup{
+    pdfborder = {0 0 0}
+}
+
+\def\name{Li-Wei Li}
+\parindent = 0.0 in
+\parskip = 0.1 in
+
+%Title page: Include name, class, title, term, abstract (at minimum)
+\title{
+    \textbf{\huge{CS544 Final Project}}\\
+    \hfill \break \break
+    \Large{Spring 2016}\\
+    \Large{CS544 Operating Systems II }\\
+    \hfill \break
+    \Large{Instructor: D. Kevin McGrath}\\
+    \hfill \break
+    \Large{June 8, 2016}\\
+    \hfill \break \break \break
+    \large{by}\\
+    \Large{Li-Wei Li}\\
+    \author{Li-Wei Li}
+    \hfill \break \break \break \break \break \break \break \break
+    \raggedright{The purpose of the project is implementing a sysfs interface to the VMCS via the MinnowBoard MAX. The operation system of the MinnowBoard MAX is CentOS 7 with Linux version 4.1.5. To implement VMCS, QEMU is installed in the MinnowBoard MAX. To achieve this goal, it is necessary to create a new kobject to control this function. In the section nine, it shows the patch of research result.}
+}
+
+
+\begin{document}
+\maketitle
+
+\newpage
+
+\section*{\large{\uppercase\expandafter{\romannumeral 1}. introduction}}
+The purpose of the project is implementing a sysfs interface to the VMCS via the MinnowBoard MAX. The operation system of the MinnowBoard MAX is CentOS 7 with Linux version 4.1.5. To implement VMCS, QEMU is installed in the MinnowBoard MAX. To achieve this goal, it is necessary to create a new kobject to control this function. In the section nine, it shows the patch of research result.
+
+\section*{\large{\uppercase\expandafter{\romannumeral 2}. sysfs}}
+The sysfs filesystem is an in-memory virtual filesystem that provides a view of the kobject hierarchy. It enables users to view the device topology of their system as a simple filesystem. Using attributes, kobjects can export files that enable kernel variables to be read from and written to. In the other words, sysfs is a user-space filesystem representation of the kobject object hierarchy inside the kernel. [1]
+
+\section*{\large{\uppercase\expandafter{\romannumeral 3}. vmcs}}
+VMCS is fully specified, with the various fields precisely defined. The VMCS can be manipulated only by hardware, or by software running in root operation. The VMCS corresponding to currently executing VM is identified by a pointer. The contents of the VMCS can be accessed only in root operation. Regular memory load and store operations may not be used to access data in the VMCS because the format used to store the VMCS is not architected, and may change from one implementation to the next. Only one VMCS can be active per virtual processor at any given time [2].
+
+\section*{\large{\uppercase\expandafter{\romannumeral 4}. vmcs}}
+The MinnowBoard is a compact and affordable open source hardware reference platform that puts the power of a 64-bit Intel chip in a small versatile form-factor [3]. The board is installed CentOS 7 and Linux 5.4.1. To connect to the laptop, there is a cp210X USB, whose pins connect with each corresponding FTDI Serial Cable Pinout. According to MinnowBoard MAX Wiki, Ground (Pin 1), 3.3V (Pin 3), TXD (Pin 4), and RXD (Pin 5) are connected to cp210 USB.
+
+\newpage
+
+\section*{\large{\uppercase\expandafter{\romannumeral 5}. Installation Log of the CentOS 7}}
+
+1.  Insert the USB which includes CentOS 7 64-bit installation file.\\
+2.  Insert the board to laptop’s USB plug.\\
+3.  Press F2 in five seconds.\\
+4.  Input “exit”. \\
+5.  Choose “Boot Manager”. \\
+6.  Choose “USB Device”.\\
+7.  Choose “Install CentOS 7”, press “e”.\\
+8.  Input “console=ttyS0, 11520”, linuxefi /images/pxeboot/vmlinuz console=ttyS0, 11520 inst . stage \\
+9.  Press ctrl+X, choose installation\\
+10. There are nine items on the screen:\\
+\tab 1) [x] Language settings\tab\tab   2) [!] Timezone settings\\
+\tab 3) [!] Installation source\tab\tab 4) [!] Software selection\\
+\tab 5) [!] Instaallation Destination\tab   6) [x] Kdump\\
+\tab 7) [ ] Network configuration\tab   8) [!] Root password\\
+\tab 9) [!] User creation\\
+\tab [x]: finished\\
+\tab [!]: not finish yet, but must finish\\
+\tab [ ]: not necessary \\
+\tab Press number to choose the item\\
+11. Reboot
+
+\section*{\large{\uppercase\expandafter{\romannumeral 6}. Installation Log of the Linux Kernel 4.1.5}}
+
+VMWare - Ubuntu\\
+1.  Install VMWare play station.\\
+2.  Install Ubuntu with 3 GB memory, 2 processors, 60 GB Hard Disk.\\
+3.  Log in Ubuntu and open the terminal.\\
+4.  Input: sudo git clone https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git\\
+5.  cd linux-stable\\
+6.  checkout v4.1.5\\
+7.  copy MinnowBoard MAX’s configure file to USB and paste to VM Linux root, rename as .config\\
+8.  sudo apt-get install libncurses5-dev rpm build-essential\\
+9.  make menuconfig\\
+10. There is a Linux/x86 4.1.5 Kernel Configuration on the screen. Choose exit.\\
+11. Compile rpm-pkg  which includes the installation package\\
+12. ~/rpmbuild/RPMS/*\\
+13. To check rpm, input ls –alh\\
+\\
+MinnowBoard MAX\\
+1.  Install the board\\
+2.  mkdir s1\\
+3.  connect the removal device\\
+mount /dev/sd1 s1\\
+4.  cp kernel-* ~/\\
+5.  umount /dev/sda1\\
+6.  rpm -ivh -- force kernel-4.1.5- 1.x86\_64.rpm
+
+\section*{\large{\uppercase\expandafter{\romannumeral 7}. Installation Log of the QEMU}}
+
+1.  Download qemu from http://wiki.qemu.org/Download v.2.6.0 in USB\\
+2.  Insert USB in MinnowBoard MAX.\\
+3.  mount /dev/sda1 s1\\
+4.  cp qemu-2.6.0 ~/\\
+5.  tar xvf qemu-2.6.0\\
+6.  install gcc and g++.\\
+Before Install QEMU\\
+1.  change the date.\\
+date –s 10/10/2020\\
+2.  download lib, glib, libffi, libprce, and pixman to a USB, and copy to the MinnowBoard MAX.\\
+zlib\\
+3.  decompress zlib.\\
+4.  ./configure\\
+5.  make \&\& make install –j8\\
+libffi\\
+6.  decompress libffi.\\
+7.  ./configure –prefix=/root/addon/libffi\\
+addon is a directory for storing four configures.\\
+8.  vi ~/.bashrc\\
+9.  input export PKG\_CONFIG\_PATH= /root/addon/libffi/lib/pkgconfig\\
+10. source ~/.bashrc\\
+11. make \&\& make install –j8\\
+12. to check the version of libffi, input pkg-config –modversion libffi\\
+libprce\\
+13. decompress libprce\\
+14. ./configure -- prefix=/root/addon/prce\\
+15. vi ~/.bashrc\\
+16. add :/root/addon/prce/lib/pkgconfig after PKG\_CONFIG\_PATH\\
+17. source ~/.bashrc\\
+18. make \&\& make install –j8\\
+glib\\
+19. decompress glib.\\
+20. ./configure -- prefix=/root/addon/glib\\
+21. vi ~/.bashrc\\
+22. add :/root/addon/glib/lib/pkgconfig after PKG\_CONFIG\_PATH\\
+23. source ~/.bashrc\\
+24. make \&\& make install –j8\\
+pixman\\
+25. decompress pixman\\
+26. ./configure -- prefix=/root/addon/pixman\\
+27. vi ~/.bashrc\\
+28. add :/root/addon/pixman/lib after PKG\_CONFIG\_PATH\\
+29. source ~/.bashrc\\
+30. make \&\& make install –j8\\
+Install QEMU\\
+1.  cd qemu\\
+2.  ./configure\\
+3.  make \&\& make install –j8\\
+It spends 2 hours to compile and install\\
+4.  To check qemu, im=nput qemu-system-i386, if the screen shows VNC server running on ‘::1;5900’, the installation is successful.\\
+\\After finish the installation, I found that it is more convenient to use yum instruction.\\
+
+\newpage
+
+\section*{\large{\uppercase\expandafter{\romannumeral 8}. VMCS and QEMU}}
+
+The following figure is the flow of handling guest execution ioctl via qemu. When the KVM initiates, the hardware will load the data of the guest, and execute the program of the guest. If any special situation leads to VMExit and return to KVM, the hardware will store CPU situation into VMCS guest, and record the reason of error in VMCS. 
+
+QEMU (user mode)\tab\tab\tab KVM (kernel mode)\tab\tab\tab Guest VM (guest mode)\\
+
+\tab\tab Issue Guest\\
+ -----$\>Execution ioctl--------\\
+ |\tab\tab\tab\tab\tab\tab\tab\tab|\\
+ |\tab\tab\tab\tab\tab\tab\tab\tab|\\
+ |\tab\tab\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab VMLAUNCH/VMRESUME \\
+ |\tab\tab\tab\tab\tab\tab -- Enter Guest Mode -----------\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab|\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab|\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab\tab\tab\tab\tab\tab Execute natively\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab\tab\tab\tab\tab\tab in Guest Mode\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab|\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab\tab|\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab\tab\tab\tab\tab\tab\tab VMExit    |\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab Handle Exit------------- \\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab|\tab\tab\tab VMCALL/HW trigger\\
+ |\tab\tab\tab\tab\tab\tab|\tab\tab\tab|\\
+ |\tab\tab\tab\tab\tab Y\quad |\tab\tab\tab|\\
+ |\tab\tab\tab------------ I/O? \\
+ |\tab\tab\tab|\tab\tab\tab|\tab\tab\tab|\\
+ |\tab\tab\tab|\tab\tab\tab|\tab\tab\tab|\\
+ |\tab\tab\tab|\tab\tab\tab|\tab\tab\tab| N\\
+ |\tab\tab\tab|\tab\tab\tab|Y\tab\tab\quad| \\
+  ---- Handle I/O---------- Signal\\
+\tab\tab\tab\tab\tab\tab|\tab\tab\tab Pending?\\
+\tab\tab\tab\tab\tab\tab|\tab\tab\tab|\\
+\tab\tab\tab\tab\tab\tab|\tab\tab\tab| N\\
+\tab\tab\tab\tab\tab\tab|\tab\tab\tab|\\
+\tab\tab\tab\tab\tab\tab------- \\
+\def
+\section*{\large{\uppercase\expandafter{\romannumeral 9}. Patch Code}}
+The following program is the patch file. The program is not prefect. It could cause the kernel to crash. The program combines with kset.h and vmx.c. \\
+$\begin{verbatim}
+diff -urN 1/arch/x86/kvm/Kconfig 2/arch/x86/kvm/Kconfig
+--- 1/arch/x86/kvm/Kconfig  2015-08-10 15:22:34.000000000 -0400
++++ 2/arch/x86/kvm/Kconfig  2016-06-07 14:36:21.329034449 -0400
+@@ -96,6 +96,12 @@
+ 
++config VMCS_SYSFS
++   tristate "Enable VMCS sysfs support"
++   depends on KVM && TRACEPOINTS
+
++
+
+source drivers/vhost/Kconfig
+diff -urN 1/arch/x86/kvm/Makefile 2/arch/x86/kvm/Makefile
+--- 1/arch/x86/kvm/Makefile 2015-08-10 15:22:34.000000000 -0400
++++ 2/arch/x86/kvm/Makefile 2016-06-07 14:36:21.330034449 -0400
+@@ -20,3 +20,4 @@
+ obj-$(CONFIG_KVM)  += kvm.o
+ obj-$(CONFIG_KVM_INTEL)    += kvm-intel.o
+ obj-$(CONFIG_KVM_AMD)  += kvm-amd.o
++obj-$(CONFIG_VMCS_SYSFS)   += vmcs-sysfs.o
+\ No newline at end of file
+diff -urN 1/arch/x86/kvm/vmcs-sysfs.c 2/arch/x86/kvm/vmcs-sysfs.c
+--- 1/arch/x86/kvm/vmcs-sysfs.c 1969-12-31 19:00:00.000000000 -0500
++++ 2/arch/x86/kvm/vmcs-sysfs.c 2016-06-07 23:34:06.000000000 -0400
+@@ -0,0 +1,113 @@
++#include <linux/device.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/stat.h>
++#include <linux/string.h>
++#include <linux/sysfs.h>
++
++MODULE_LICENSE("GPL v2");
++MODULE_AUTHOR(“LiWei Li”);
++
++struct kobject kobj;
++
++extern unsigned long vmcs_readl(unsigned long field);
++extern void vmcs_writel(unsigned long field, unsigned long value);
++extern unsigned long get_field_addr(const char *field);
++
++struct attribute G_rip_attr = {
++   .name = "guest_rip",
++   .mode = S_IRWXUGO,
++};
++
++struct attribute G_rsp_attr = {
++   .name = "guest_rsp",
++   .mode = S_IRWXUGO,
++};
++
++struct attribute G_cr0_attr = {
++   .name = "guest_cr0",
++   .mode = S_IRWXUGO,
++};
++
++struct attribute G_cr3_attr = {
++   .name = "guest_cr3",
++   .mode = S_IRWXUGO,
++};
++
++struct attribute G_cr4_attr = {
++   .name = "guest_cr4",
++   .mode = S_IRWXUGO,
++};
++
++struct attribute G_interuptibility_info = {
++   .name = "guest_interuptibility_info",
++   .mode = S_IRWXUGO,
++};
++
++struct attribute G_rflags = {
++   .name = "guest_rflags",
++   .mode = S_IRWXUGO,
++};
++
++struct vmcs_obj {
++   struct kobject kobj;
++   int CPU_ID; 
++};
++
++struct vmcs_attribute {
++   struct attribute attr;
++   ssize_t (*show)(struct vmcs_obj *vmcs, struct vmcs_attribute *attr, char *buf);
++   ssize_t (*store)(struct vmcs_obj *vmcs, struct vmcs_attribute *attr, char *buf, size_t count);
++};
++
++static __always_inline unsigned long __vmcs_readl(unsigned long field)
++{
++   unsigned long value;
++
++   asm volatile (__ex_clear(ASM_VMX_VMREAD_RDX_RAX, "%0")
++             : "=a"(value) : "d"(field) : "cc");
++   return value;
++};
++
++static __always_inline u16 vmcs_read16(unsigned long field)
++{
++   vmcs_check16(field);
++   return __vmcs_readl(field);
++}
++
++static __always_inline u32 vmcs_read32(unsigned long field)
++{
++   vmcs_check32(field);
++   return __vmcs_readl(field);
++}
++
++static __always_inline u64 vmcs_read64(unsigned long field)
++{
++   vmcs_check64(field);
++#ifdef CONFIG_X86_64
++   return __vmcs_readl(field);
++#else
++   return __vmcs_readl(field) | ((u64)__vmcs_readl(field+1) << 32);
++#endif
++};
++
++static __always_inline unsigned long vmcs_readl(unsigned long field)
++{
++   vmcs_checkl(field);
++   return __vmcs_readl(field);
++};
++
++static noinline void vmwrite_error(unsigned long field, unsigned long value)
++{
++   printk(KERN_ERR "vmwrite error: reg %lx value %lx (err %d)\n",
++          field, value, vmcs_read32(VM_INSTRUCTION_ERROR));
++   dump_stack();
++};
++
++static __always_inline void __vmcs_writel(unsigned long field, unsigned long value)
++{
++   u8 error;
++
++   asm volatile (__ex(ASM_VMX_VMWRITE_RAX_RDX) "; setna %0"
++              : "=q"(error) : "a"(value), "d"(field) : "cc");
++};
++
++static __always_inline void vmcs_write16(unsigned long field, u16 value)
++{
++        vmcs_check16(field);
++        __vmcs_writel(field, value);
++};
++
++static __always_inline void vmcs_write32(unsigned long field, u32 value)
++{
++        vmcs_check32(field);
++        __vmcs_writel(field, value);
++};
++
++static __always_inline void vmcs_write64(unsigned long field, u64 value)
++{
++        vmcs_check64(field);
++        __vmcs_writel(field, value);
++#ifndef CONFIG_X86_64
++        asm volatile ("");
++        __vmcs_writel(field+1, value >> 32);
++#endif
++};
++
++static __always_inline void vmcs_writel(unsigned long field, unsigned long value)
++{
++        vmcs_checkl(field);
++        __vmcs_writel(field, value);
++};
++
++static ssize_t vmcs_show
++       (struct kobject *kobject, struct attribute *attr, char *buf) {
++   ssize_t count;
++   unsigned long value;
++   unsigned long field;
++   field = get_field_addr(attr->name);
++   printk("vmcs_sysfs: read %ld\n", field);
++   value = vmcs_readl(field);
++   count = sprintf(buf, "%ld\n", value);
++   return count;
++};
++
++static ssize_t vmcs_store(struct kobject *kobject, struct attribute *attr, const char *buf, size_t count) {
++   unsigned long value;
++   unsigned long field;
++   field = get_field_addr(attr->name);
++   value = simple_strtoul(buf, NULL, 2);
++   printk("vmcs_sysfs: write %ld\n", field);
++   vmcs_writel(field, value);
++   vmcs_write64(field, value);
++   return count;
++};
++
++static void vmcs_sysfs_release(struct kobject *kobject) {
++   printk("vmcs_sysfs: release\n");
++};
++
++static struct attribute * def_attr[] = {
++   &G_rip_attr,
++   &G_rsp_attr,
++   &G_cr0_attr,
++   &G_cr3_attr,
++   &G_cr4_attr,
++   &G_interuptibility_info,
++   &G_rflags,
++   NULL,   
++};
++
++static struct sysfs_ops vmcs_sysfs_ops = {
++   .show = vmcs_sysfs_show,
++   .store = vmcs_sysfs_store,
++};
++
++struct kobj_type ktype = {
++   .release = vmcs_sysfs_release,
++   .sysfs_ops = &vmcs_sysfs_ops,
++   .default_attrs = def_attr,
++};
++
++static int __init vmcs_sysfs_module_init(void) {
++   int ret;
++   printk("vmcs_sysfs: init\n");
++   ret = kobject_init_and_add(&kobj, &ktype, NULL, "vmcs");
++   return ret;
++}
++
++static void __exit vmcs_sysfs_module_exit(void) {
++   printk("vmcs_sysfs: exit\n");
++   kobject_del(&kobj);
++} 
++
++module_init(vmcs_sysfs_module_init);
++module_exit(vmcs_sysfs_module_exit);
+\ No newline at end of file
+diff -urN 1/arch/x86/kvm/vmx.c 2/arch/x86/kvm/vmx.c
+--- 1/arch/x86/kvm/vmx.c    2015-08-10 15:22:34.000000000 -0400
++++ 2/arch/x86/kvm/vmx.c    2016-06-07 22:09:21.336034449 -0400
+@@ -32,6 +32,7 @@
+ #include <linux/slab.h>
+ #include <linux/tboot.h>
+ #include <linux/hrtimer.h>
++#include <linux/string.h>
+ #include "kvm_cache_regs.h"
+ #include "x86.h"
+ 
+@@ -10282,5 +10283,41 @@
+    kvm_exit();
+ }
+ 
++static unsigned long get_field_addr(const char *fieldname) {
++   unsigned long addr;
++   if(strcmp("GUEST_RIP", fieldname) == 0) {
++       addr = GUEST_RIP;
++   }
++   else if (strcmp("GUEST_RSP", fieldname) == 0) {
++       addr = GUEST_RSP;
++   }
++   else if (strcmp("GUEST_CR0", fieldname) == 0) {
++       addr = GUEST_CR0;
++   }
++   else if (strcmp("GUEST_CR3", fieldname) == 0) {
++       addr = GUEST_CR3;
++   }
++   else if (strcmp("GUEST_CR4", fieldname) == 0) {
++       addr = GUEST_CR4;
++   }
++   else if (strcmp("GUEST_INTERRUPTIBILITY_INFO", fieldname) == 0) {
++       addr = GUEST_INTERRUPTIBILITY_INFO;
++   }
++   else if (strcmp("GUEST_RFLAGS", fieldname) == 0) {
++       addr = GUEST_RFLAGS;
++   }
++   else if (strcmp("HOST_RIP", fieldname) == 0) {
++       addr = HOST_RIP;
++   }
++   else {
++       addr = -1;
++   }
++   return addr;
++}
++
++EXPORT_SYMBOL(get_field_addr);
++EXPORT_SYMBOL(vmcs_readl);
++EXPORT_SYMBOL(vmcs_writel);
++
+ module_init(vmx_init)
+ module_exit(vmx_exit)
+
+\end{verbatim}
+
+\newpage
+\section*{\large{\uppercase\expandafter{\romannumeral 10}. Conclusion}}
+In this project, I need to implement sysfs to the VMCS. In the MinnowBoard, I install the CentOS 7 and Linux kernel 4.1.5. To fetch the information of VMCS, I install QEMU in this board, too. But the kobject I should write is not really successful as I expect. The program could cause the kernel to crash because it did not record the CPU ID.\\
+Why is it necessary to record CPU ID? Because there are many CPUs in the machine, in the other words, it is not every CPU will execute the CPU which control the VMCS, it could cause kernel crash.
+
+
+\newpage
+
+\section*{\large {\uppercase {Bibliography}}}
+\begin{verbatim}
+[1] L. Anthony. (2010). MinnowBoard MAX [Online]. Available: http://wiki.minnowboard.org/MinnowBoard_MAX
+[2] D. A. Patterson and J. L. Hennesy, “The Processor,” in Virtual Machines: Versatile Platforms for Systems and Processes, 5th ed, MA, 2014, p.262, p.270
+\end{verbatim}
+\end{document}
+
+

@@ -1,0 +1,303 @@
+vmcs的發展歷程
+裡稐研究(上次的東西搬
+還記設定
+代碼實現
+運行結果
+總結
+
+需要紀錄CPU, 並不是所有CPU都會運行虛擬機
+OS正在處理虛擬的的CPU就可以讀寫VMCS
+如果沒有處理正在運行虛擬機的CPU 就會出錯
+int CPU_ID = 
+
+要找到CPU_ID的話 VMCS對應的VCPU 對應的CPU_ID
+指定CPU的函數: SMP_function_run_sigle
+要修改VMCS所以要知道對應的CPU
+
+diff -urN 1/arch/x86/kvm/Kconfig 2/arch/x86/kvm/Kconfig
+--- 1/arch/x86/kvm/Kconfig	2015-08-10 15:22:34.000000000 -0400
++++ 2/arch/x86/kvm/Kconfig	2016-06-07 14:36:21.329034449 -0400
+@@ -96,6 +96,12 @@
+ 
+ 	  If unsure, say Y.
+ 
++config VMCS_SYSFS
++	tristate "Enable VMCS sysfs support"
++	depends on KVM && TRACEPOINTS
++	---help---
++	 Provide support for VMCS sysfs.
++
+
+source drivers/vhost/Kconfig
+diff -urN 1/arch/x86/kvm/Makefile 2/arch/x86/kvm/Makefile
+--- 1/arch/x86/kvm/Makefile	2015-08-10 15:22:34.000000000 -0400
++++ 2/arch/x86/kvm/Makefile	2016-06-07 14:36:21.330034449 -0400
+@@ -20,3 +20,4 @@
+ obj-$(CONFIG_KVM)	+= kvm.o
+ obj-$(CONFIG_KVM_INTEL)	+= kvm-intel.o
+ obj-$(CONFIG_KVM_AMD)	+= kvm-amd.o
++obj-$(CONFIG_VMCS_SYSFS)	+= vmcs-sysfs.o
+\ No newline at end of file
+diff -urN 1/arch/x86/kvm/vmcs-sysfs.c 2/arch/x86/kvm/vmcs-sysfs.c
+--- 1/arch/x86/kvm/vmcs-sysfs.c	1969-12-31 19:00:00.000000000 -0500
++++ 2/arch/x86/kvm/vmcs-sysfs.c	2016-06-07 23:34:06.000000000 -0400
+@@ -0,0 +1,113 @@
++#include <linux/device.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/stat.h>
++#include <linux/string.h>
++#include <linux/sysfs.h>
++
++MODULE_LICENSE("GPL v2");
++MODULE_AUTHOR(“LiWei Li”);
++
++struct kobject kobj;
++
++extern unsigned long vmcs_readl(unsigned long field);
++extern void vmcs_writel(unsigned long field, unsigned long value);
++extern unsigned long get_field_addr(const char *field);
++
++struct attribute G_rip_attr = {
++	.name = "guest_rip",
++	.mode = S_IRWXUGO,
++};
++
++struct attribute G_rsp_attr = {
++	.name = "guest_rsp",
++	.mode = S_IRWXUGO,
++};
++
++struct attribute G_cr0_attr = {
++	.name = "guest_cr0",
++	.mode = S_IRWXUGO,
++};
++
++struct attribute G_cr3_attr = {
++	.name = "guest_cr3",
++	.mode = S_IRWXUGO,
++};
++
++struct attribute G_cr4_attr = {
++	.name = "guest_cr4",
++	.mode = S_IRWXUGO,
++};
++
++struct attribute G_interuptibility_info = {
++	.name = "guest_interuptibility_info",
++	.mode = S_IRWXUGO,
++};
++
++struct attribute G_rflags = {
++	.name = "guest_rflags",
++	.mode = S_IRWXUGO,
++};
++
++struct vmcs_obj {
++	struct kobject kobj;
++	int CPU_ID;	
++};
++
++struct vmcs_attribute {
++	struct attribute attr;
++	ssize_t (*show)(struct vmcs_obj *vmcs, struct vmcs_attribute *attr, char *buf);
++	ssize_t (*store)(struct vmcs_obj *vmcs, struct vmcs_attribute *attr, char *buf, size_t count);
++};
++
++static __always_inline unsigned long __vmcs_readl(unsigned long field)
++{
++	unsigned long value;
++
++	asm volatile (__ex_clear(ASM_VMX_VMREAD_RDX_RAX, "%0")
++		      : "=a"(value) : "d"(field) : "cc");
++	return value;
++};
++
++static __always_inline u16 vmcs_read16(unsigned long field)
++{
++	vmcs_check16(field);
++	return __vmcs_readl(field);
++}
++
++static __always_inline u32 vmcs_read32(unsigned long field)
++{
++	vmcs_check32(field);
++	return __vmcs_readl(field);
++}
++
++static __always_inline u64 vmcs_read64(unsigned long field)
++{
++	vmcs_check64(field);
++#ifdef CONFIG_X86_64
++	return __vmcs_readl(field);
++#else
++	return __vmcs_readl(field) | ((u64)__vmcs_readl(field+1) << 32);
++#endif
++};
++
++static __always_inline unsigned long vmcs_readl(unsigned long field)
++{
++	vmcs_checkl(field);
++	return __vmcs_readl(field);
++};
++
++static noinline void vmwrite_error(unsigned long field, unsigned long value)
++{
++	printk(KERN_ERR "vmwrite error: reg %lx value %lx (err %d)\n",
++	       field, value, vmcs_read32(VM_INSTRUCTION_ERROR));
++	dump_stack();
++};
++
++static __always_inline void __vmcs_writel(unsigned long field, unsigned long value)
++{
++	u8 error;
++
++	asm volatile (__ex(ASM_VMX_VMWRITE_RAX_RDX) "; setna %0"
++		       : "=q"(error) : "a"(value), "d"(field) : "cc");
++};
++
++static __always_inline void vmcs_write16(unsigned long field, u16 value)
++{
++        vmcs_check16(field);
++        __vmcs_writel(field, value);
++};
++
++static __always_inline void vmcs_write32(unsigned long field, u32 value)
++{
++        vmcs_check32(field);
++        __vmcs_writel(field, value);
++};
++
++static __always_inline void vmcs_write64(unsigned long field, u64 value)
++{
++        vmcs_check64(field);
++        __vmcs_writel(field, value);
++#ifndef CONFIG_X86_64
++        asm volatile ("");
++        __vmcs_writel(field+1, value >> 32);
++#endif
++};
++
++static __always_inline void vmcs_writel(unsigned long field, unsigned long value)
++{
++        vmcs_checkl(field);
++        __vmcs_writel(field, value);
++};
++
++static ssize_t vmcs_show(struct kobject *kobject, struct attribute *attr, char *buf) {
++	ssize_t count;
++	unsigned long value;
++	unsigned long field;
++	field = get_field_addr(attr->name);
++	printk("vmcs_sysfs: read %ld\n", field);
++	value = vmcs_readl(field);
++	count = sprintf(buf, "%ld\n", value);
++	return count;
++};
++
++static ssize_t vmcs_store(struct kobject *kobject, struct attribute *attr, const char *buf, size_t count) {
++	unsigned long value;
++	unsigned long field;
++	field = get_field_addr(attr->name);
++	value = simple_strtoul(buf, NULL, 2);
++	printk("vmcs_sysfs: write %ld\n", field);
++	vmcs_writel(field, value);
++	vmcs_write64(field, value);
++	return count;
++};
++
++static void vmcs_sysfs_release(struct kobject *kobject) {
++	printk("vmcs_sysfs: release\n");
++};
++
++static struct attribute * def_attr[] = {
++	&G_rip_attr,
++	&G_rsp_attr,
++	&G_cr0_attr,
++	&G_cr3_attr,
++	&G_cr4_attr,
++	&G_interuptibility_info,
++	&G_rflags,
++	NULL,	
++};
++
++static struct sysfs_ops vmcs_sysfs_ops = {
++	.show = vmcs_sysfs_show,
++	.store = vmcs_sysfs_store,
++};
++
++struct kobj_type ktype = {
++	.release = vmcs_sysfs_release,
++	.sysfs_ops = &vmcs_sysfs_ops,
++	.default_attrs = def_attr,
++};
++
++static int __init vmcs_sysfs_module_init(void) {
++	int ret;
++	printk("vmcs_sysfs: init\n");
++	ret = kobject_init_and_add(&kobj, &ktype, NULL, "vmcs");
++	return ret;
++}
++
++static void __exit vmcs_sysfs_module_exit(void) {
++	printk("vmcs_sysfs: exit\n");
++	kobject_del(&kobj);
++} 
++
++module_init(vmcs_sysfs_module_init);
++module_exit(vmcs_sysfs_module_exit);
+\ No newline at end of file
+diff -urN 1/arch/x86/kvm/vmx.c 2/arch/x86/kvm/vmx.c
+--- 1/arch/x86/kvm/vmx.c	2015-08-10 15:22:34.000000000 -0400
++++ 2/arch/x86/kvm/vmx.c	2016-06-07 22:09:21.336034449 -0400
+@@ -32,6 +32,7 @@
+ #include <linux/slab.h>
+ #include <linux/tboot.h>
+ #include <linux/hrtimer.h>
++#include <linux/string.h>
+ #include "kvm_cache_regs.h"
+ #include "x86.h"
+ 
+@@ -10282,5 +10283,41 @@
+ 	kvm_exit();
+ }
+ 
++static unsigned long get_field_addr(const char *fieldname) {
++	unsigned long addr;
++	if(strcmp("GUEST_RIP", fieldname) == 0) {
++		addr = GUEST_RIP;
++	}
++	else if (strcmp("GUEST_RSP", fieldname) == 0) {
++		addr = GUEST_RSP;
++	}
++	else if (strcmp("GUEST_CR0", fieldname) == 0) {
++		addr = GUEST_CR0;
++	}
++	else if (strcmp("GUEST_CR3", fieldname) == 0) {
++		addr = GUEST_CR3;
++	}
++	else if (strcmp("GUEST_CR4", fieldname) == 0) {
++		addr = GUEST_CR4;
++	}
++	else if (strcmp("GUEST_INTERRUPTIBILITY_INFO", fieldname) == 0) {
++		addr = GUEST_INTERRUPTIBILITY_INFO;
++	}
++	else if (strcmp("GUEST_RFLAGS", fieldname) == 0) {
++		addr = GUEST_RFLAGS;
++	}
++	else if (strcmp("HOST_RIP", fieldname) == 0) {
++		addr = HOST_RIP;
++	}
++	else {
++		addr = -1;
++	}
++	return addr;
++}
++
++EXPORT_SYMBOL(get_field_addr);
++EXPORT_SYMBOL(vmcs_readl);
++EXPORT_SYMBOL(vmcs_writel);
++
+ module_init(vmx_init)
+ module_exit(vmx_exit)
